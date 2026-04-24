@@ -42,13 +42,16 @@ CatCoder now supports using OpenAI-compatible APIs for inference, such as Silico
    OPENAI_API_KEY=your-api-key-here
    OPENAI_BASE_URL=https://api.siliconflow.cn/v1
    OPENAI_MODEL=Qwen/Qwen2.5-Coder-32B-Instruct
+   VLLM_API_KEY=EMPTY
    ```
 
-2. In `evaluation.py`, use the `OpenAIModel` with your desired model ID:
+   - `OPENAI_MODEL`: The model ID used for inference. Supports any OpenAI-compatible model (e.g., `Qwen/Qwen2.5-Coder-32B-Instruct`, `deepseek-ai/DeepSeek-V3`, etc.)
+   - `VLLM_API_KEY`: The API key for local vLLM server. Defaults to `EMPTY` if not set.
+
+2. In `evaluation.py`, use the `OpenAIModel` (model ID is read from `.env` automatically):
    ```python
    if __name__ == '__main__':
        model = OpenAIModel(
-           model_id='Qwen/Qwen2.5-Coder-32B-Instruct',
            max_new_tokens=512,
        )
        benchmark = JavaEvalCatCoder(model, n=10, cache=False)
