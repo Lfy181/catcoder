@@ -47,16 +47,12 @@ class Model:
                 return OpenAIModel(**kwargs)
     
 class OpenAIModel(Model):
-    KNOWN_MODELS = {
-        'gpt-3.5': 'gpt-3.5-turbo-0125',
-        'gpt-4': 'gpt-4-turbo-preview',
-    }
-
     def __init__(self, model_id=None, temp=0.6, top_p=0.7, max_new_tokens=512, **kwargs):
         if model_id is None:
-            model_id = os.environ.get('OPENAI_MODEL', 'gpt-3.5')
-        resolved_id = self.KNOWN_MODELS.get(model_id, model_id)
-        super().__init__(resolved_id, temp, top_p)
+            model_id = os.environ.get('OPENAI_MODEL')
+            if model_id is None:
+                raise ValueError('OPENAI_MODEL is not set. Please set it in .env or as an environment variable.')
+        super().__init__(model_id, temp, top_p)
         self.max_new_tokens = max_new_tokens
         self.client = OpenAI(api_key=os.environ['OPENAI_API_KEY'],
                              base_url=os.environ['OPENAI_BASE_URL'])
@@ -116,7 +112,7 @@ class VllmClientModel(Model):
     def __init__(self, model_id: str, port=3000, mock=False, temp=0.6, top_p=0.7, **kwargs):
         super().__init__(model_id, temp, top_p)
         if not mock:
-            self.client = OpenAI(api_key='EMPTY', base_url=f'http://localhost:{port}/v1')
+            self.client = OpenAI(api_key=os.environ.get('VLLM_API_KEY', 'EMPTY'), base_url=f'http://localhost:{port}/v1')
             self._models = self.client.models.list()
             for model in self._models.data:
                 if model.id == model_id:
