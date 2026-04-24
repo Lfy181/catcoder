@@ -30,3 +30,35 @@
 - For further research:
     - The benchmark datasets are located at `catcoder/{java|rust}/datasets`.
     - `catcoder/tools`, `catcoder/{java|rust}/retrieve_relevant_code.py` and `catcoder/{java|rust}/extract_type_context.py` contain the implementation of CatCoder.
+
+## Using OpenAI-compatible API
+
+CatCoder now supports using OpenAI-compatible APIs for inference, such as SiliconFlow.
+
+### Configuration
+
+1. Create a `.env` file in the `catcoder` directory based on the `.env.example` template:
+   ```
+   OPENAI_API_KEY=your-api-key-here
+   OPENAI_BASE_URL=https://api.siliconflow.cn/v1
+   OPENAI_MODEL=Qwen/Qwen2.5-Coder-32B-Instruct
+   ```
+
+2. In `evaluation.py`, use the `OpenAIModel` with your desired model ID:
+   ```python
+   if __name__ == '__main__':
+       model = OpenAIModel(
+           model_id='Qwen/Qwen2.5-Coder-32B-Instruct',
+           max_new_tokens=512,
+       )
+       benchmark = JavaEvalCatCoder(model, n=10, cache=False)
+       benchmark.evaluate()
+   ```
+
+### Supported Models
+
+You can use any OpenAI-compatible model, such as:
+- Qwen/Qwen2.5-Coder-32B-Instruct
+- deepseek-ai/DeepSeek-V3
+- gpt-3.5-turbo
+- gpt-4
