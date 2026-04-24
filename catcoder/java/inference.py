@@ -12,8 +12,22 @@ try:
 except ImportError:
     print('Please install the vllm package')
 
+import os
+print(f"Current directory: {os.getcwd()}")
+print(f"Looking for .env file at: {os.path.join(os.getcwd(), '.env')}")
 if os.path.exists('.env'):
+    print("Found .env file in current directory")
     load_dotenv('.env', override=True)
+elif os.path.exists('../.env'):
+    print("Found .env file in parent directory")
+    load_dotenv('../.env', override=True)
+else:
+    print("No .env file found")
+
+# Print environment variables for debugging
+print(f"OPENAI_API_KEY: {os.environ.get('OPENAI_API_KEY', 'Not set')}")
+print(f"OPENAI_BASE_URL: {os.environ.get('OPENAI_BASE_URL', 'Not set')}")
+print(f"OPENAI_MODEL: {os.environ.get('OPENAI_MODEL', 'Not set')}")
 
 class Model:
     def __init__(self, model_id: str, temp: float, top_p: float, **kwargs):
@@ -59,22 +73,30 @@ class OpenAIModel(Model):
         
     @backoff.on_exception(backoff.expo, RateLimitError)
     def infer(self, prompt: str) -> str:
-        task = self.client.chat.completions
-        completion = task.create(
-            model=self.model_id,
-            messages=[{'role': 'system', 'content': 'You are an expert at Java programming.'}, {'role': 'user', 'content': prompt}],
-            stream=True,
-            temperature=self.temp,
-            top_p=self.top_p,
-            stop=['[/CODE]', '/**'],
-            max_tokens=self.max_new_tokens,
-        )
-        ans = ''
-        for chunk in completion:
-            content = chunk.choices[0].delta.content
-            if content is not None:
-                ans += content
-        return ans
+        print(f"Using model: {self.model_id}")
+        print(f"API Base URL: {os.environ['OPENAI_BASE_URL']}")
+        try:
+            task = self.client.chat.completions
+            completion = task.create(
+                model=self.model_id,
+                messages=[{'role': 'system', 'content': 'You are an expert at Java programming.'}, {'role': 'user', 'content': prompt}],
+                stream=True,
+                temperature=self.temp,
+                top_p=self.top_p,
+                stop=['[/CODE]', '/**'],
+                max_tokens=self.max_new_tokens,
+            )
+            ans = ''
+            for chunk in completion:
+                content = chunk.choices[0].delta.content
+                if content is not None:
+                    ans += content
+            return ans
+        except Exception as e:
+            print(f"Error during inference: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            raise
 
 class VllmModel(Model):
     def __init__(self, model_id: str, model_path: str, 
