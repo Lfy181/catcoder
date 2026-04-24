@@ -1,4 +1,5 @@
 import os
+import re
 
 import backoff
 from dotenv import load_dotenv
@@ -10,10 +11,54 @@ except ImportError:
 try:
     from vllm import LLM, SamplingParams
 except ImportError:
-    print('Please install the vllm package')
+    LLM = None
+    SamplingParams = None
 
-if os.path.exists('.env'):
-    load_dotenv('.env', override=True)
+for env_path in ('.env', '../.env'):
+    if os.path.exists(env_path):
+        load_dotenv(env_path, override=True)
+        break
+
+def remove_reasoning_markup(text: str) -> str:
+    text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
+    return re.sub(r'^\s*(?:(?:</?think>|think>)\s*)+', '', text).lstrip()
+
+def env_bool(name: str, default: bool) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() not in {'0', 'false', 'no', 'off', ''}
+
+def coerce_content(content) -> str:
+    if content is None:
+        return ''
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict):
+                parts.append(str(item.get('text') or ''))
+            else:
+                parts.append(str(getattr(item, 'text', '') or ''))
+        return ''.join(parts)
+    return str(content)
+
+def should_retry_without_extra_body(exc: Exception) -> bool:
+    status_code = getattr(exc, 'status_code', None)
+    message = str(exc).lower()
+    if status_code in {400, 422}:
+        return True
+    return any(token in message for token in (
+        'extra_body',
+        'enable_thinking',
+        'thinking_budget',
+        'unsupported',
+        'unknown parameter',
+        'unrecognized',
+    ))
 
 class Model:
     def __init__(self, model_id: str, temp: float, top_p: float, **kwargs):
@@ -47,34 +92,65 @@ class Model:
                 return OpenAIModel(**kwargs)
     
 class OpenAIModel(Model):
-    def __init__(self, model_id=None, temp=0.6, top_p=0.7, max_new_tokens=512, **kwargs):
+    def __init__(self, model_id=None, temp=0.6, top_p=0.7, max_new_tokens=512,
+                 stream=None, disable_thinking=None, thinking_budget=None,
+                 client=None, **kwargs):
         if model_id is None:
             model_id = os.environ.get('OPENAI_MODEL')
             if model_id is None:
                 raise ValueError('OPENAI_MODEL is not set. Please set it in .env or as an environment variable.')
         super().__init__(model_id, temp, top_p)
         self.max_new_tokens = max_new_tokens
-        self.client = OpenAI(api_key=os.environ['OPENAI_API_KEY'],
-                             base_url=os.environ['OPENAI_BASE_URL'])
+        self.stream = env_bool('OPENAI_STREAM', False) if stream is None else stream
+        self.disable_thinking = env_bool('OPENAI_DISABLE_THINKING', True) if disable_thinking is None else disable_thinking
+        self.thinking_budget = int(os.environ.get('OPENAI_THINKING_BUDGET', '128')) if thinking_budget is None else thinking_budget
+        self.client = client or OpenAI(api_key=os.environ['OPENAI_API_KEY'],
+                                      base_url=os.environ['OPENAI_BASE_URL'])
+
+    def _completion_kwargs(self, prompt: str) -> dict:
+        request = {
+            'model': self.model_id,
+            'messages': [{'role': 'system', 'content': 'You are an expert at Java programming.'}, {'role': 'user', 'content': prompt}],
+            'stream': self.stream,
+            'temperature': self.temp,
+            'top_p': self.top_p,
+            'stop': ['[/CODE]', '/**'],
+            'max_tokens': self.max_new_tokens,
+        }
+        if self.disable_thinking:
+            extra_body = {'enable_thinking': False}
+            if self.thinking_budget is not None:
+                extra_body['thinking_budget'] = self.thinking_budget
+            request['extra_body'] = extra_body
+        return request
+
+    def _extract_completion_text(self, completion) -> str:
+        if self.stream:
+            ans = ''
+            for chunk in completion:
+                if not getattr(chunk, 'choices', None):
+                    continue
+                delta = chunk.choices[0].delta
+                ans += coerce_content(getattr(delta, 'content', None))
+            return ans
+        if not getattr(completion, 'choices', None):
+            return ''
+        message = completion.choices[0].message
+        return coerce_content(getattr(message, 'content', None))
         
     @backoff.on_exception(backoff.expo, RateLimitError)
     def infer(self, prompt: str) -> str:
         task = self.client.chat.completions
-        completion = task.create(
-            model=self.model_id,
-            messages=[{'role': 'system', 'content': 'You are an expert at Java programming.'}, {'role': 'user', 'content': prompt}],
-            stream=True,
-            temperature=self.temp,
-            top_p=self.top_p,
-            stop=['[/CODE]', '/**'],
-            max_tokens=self.max_new_tokens,
-        )
-        ans = ''
-        for chunk in completion:
-            content = chunk.choices[0].delta.content
-            if content is not None:
-                ans += content
-        return ans
+        request = self._completion_kwargs(prompt)
+        try:
+            completion = task.create(**request)
+        except Exception as exc:
+            if 'extra_body' not in request or not should_retry_without_extra_body(exc):
+                raise
+            request.pop('extra_body', None)
+            completion = task.create(**request)
+        ans = self._extract_completion_text(completion)
+        return remove_reasoning_markup(ans)
 
 class VllmModel(Model):
     def __init__(self, model_id: str, model_path: str, 
@@ -87,6 +163,8 @@ class VllmModel(Model):
                  quantization: str=None,
                  **kwargs
                  ):
+        if LLM is None or SamplingParams is None:
+            raise ImportError('Please install the vllm package to use VllmModel.')
         super().__init__(model_id, temp, top_p)
         if gpu_ordinals is not None:
             os.environ['CUDA_VISIBLE_DEVICES'] = ','.join(map(str, gpu_ordinals))
@@ -136,6 +214,8 @@ class VllmClientModel(Model):
         )
         ans = ''
         for chunk in completion:
+            if not chunk.choices:
+                continue
             content = chunk.choices[0].text
             if content is not None:
                 ans += content
