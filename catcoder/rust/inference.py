@@ -31,23 +31,34 @@ class Model:
 
     @staticmethod
     def new(**kwargs) -> 'Model':
-        if 'gpt' in kwargs['model_id']:
+        provider = kwargs.pop('provider', None)
+        if provider == 'openai':
             return OpenAIModel(**kwargs)
+        elif provider == 'vllm-client':
+            return VllmClientModel(**kwargs)
+        elif provider == 'vllm':
+            return VllmModel(**kwargs)
         else:
             if 'port' in kwargs:
                 return VllmClientModel(**kwargs)
-            else:
+            elif 'model_path' in kwargs:
                 return VllmModel(**kwargs)
+            else:
+                return OpenAIModel(**kwargs)
     
 class OpenAIModel(Model):
-    def __init__(self, model_id='gpt-3.5', temp=0.6, top_p=0.7, **kwargs):
-        assert model_id in ['gpt-3.5', 'gpt-4'], 'Use a valid model id: gpt-3.5, gpt-4'
-        full_ids = {
-            'gpt-3.5': 'gpt-3.5-turbo-0125',
-            'gpt-4': 'gpt-4-turbo-preview',
-        }
-        super().__init__(full_ids[model_id], temp, top_p)
-        self.client = OpenAI(api_key=os.environ['OPENAI_API_KEY'], 
+    KNOWN_MODELS = {
+        'gpt-3.5': 'gpt-3.5-turbo-0125',
+        'gpt-4': 'gpt-4-turbo-preview',
+    }
+
+    def __init__(self, model_id=None, temp=0.6, top_p=0.7, max_new_tokens=512, **kwargs):
+        if model_id is None:
+            model_id = os.environ.get('OPENAI_MODEL', 'gpt-3.5')
+        resolved_id = self.KNOWN_MODELS.get(model_id, model_id)
+        super().__init__(resolved_id, temp, top_p)
+        self.max_new_tokens = max_new_tokens
+        self.client = OpenAI(api_key=os.environ['OPENAI_API_KEY'],
                              base_url=os.environ['OPENAI_BASE_URL'])
         
     @backoff.on_exception(backoff.expo, RateLimitError)

@@ -204,6 +204,6 @@ class RustEvalWithoutRetrieval(RustEval):
         }
 
 if __name__ == '__main__':
-    model = VllmClientModel('codellama-13b')
+    model = OpenAIModel()
     benchmark = RustEvalCatCoder(model, n=10, cache=False)
     benchmark.evaluate()

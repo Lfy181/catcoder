@@ -189,6 +189,6 @@ class JavaEvalWithoutRetrieval(JavaEval):
         }
 
 if __name__ == '__main__':
-    model = VllmClientModel('codellama-13b')
+    model = OpenAIModel()
     benchmark = JavaEvalCatCoder(model, n=10, cache=False)
     benchmark.evaluate()
