@@ -190,5 +190,5 @@ class JavaEvalWithoutRetrieval(JavaEval):
 
 if __name__ == '__main__':
     model = OpenAIModel()
-    benchmark = JavaEvalCatCoder(model, n=10, cache=False)
+    benchmark = JavaEvalCatCoder(model, n=2, cache=True)
     benchmark.evaluate()
