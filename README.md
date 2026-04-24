@@ -55,10 +55,4 @@ CatCoder now supports using OpenAI-compatible APIs for inference, such as Silico
        benchmark.evaluate()
    ```
 
-### Supported Models
 
-You can use any OpenAI-compatible model, such as:
-- Qwen/Qwen2.5-Coder-32B-Instruct
-- deepseek-ai/DeepSeek-V3
-- gpt-3.5-turbo
-- gpt-4
