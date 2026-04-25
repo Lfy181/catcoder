@@ -1,5 +1,9 @@
 import os
 import json
+import pyarrow as pa
+
+if not hasattr(pa, "PyExtensionType"):
+    pa.PyExtensionType = pa.ExtensionType
 
 from datasets import load_from_disk
 
