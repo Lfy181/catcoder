@@ -44,7 +44,9 @@ def python_snippet(snippet: str, cwd=ROOT, timeout=120) -> tuple[bool, str]:
 
 def check_python_deps() -> bool:
     ok, detail = python_snippet(
-        "import pyarrow, datasets, openai, dotenv, backoff; "
+        "import pyarrow; "
+        "pyarrow.PyExtensionType = getattr(pyarrow, 'PyExtensionType', pyarrow.ExtensionType); "
+        "import datasets, openai, dotenv, backoff; "
         "print('pyarrow=' + pyarrow.__version__)"
     )
     return print_result('Python dependencies', ok, detail)
@@ -52,6 +54,8 @@ def check_python_deps() -> bool:
 
 def check_datasets() -> bool:
     ok, detail = python_snippet(
+        "import pyarrow; "
+        "pyarrow.PyExtensionType = getattr(pyarrow, 'PyExtensionType', pyarrow.ExtensionType); "
         "from datasets import load_from_disk; "
         "print('java=' + str(len(load_from_disk('java/dataset/javaeval'))) + "
         "' rust=' + str(len(load_from_disk('rust/dataset/rusteval'))))"
@@ -113,6 +117,8 @@ def check_cloud_smoke() -> bool:
 
 def check_codegen_smoke() -> bool:
     java_snippet = """
+import pyarrow
+pyarrow.PyExtensionType = getattr(pyarrow, 'PyExtensionType', pyarrow.ExtensionType)
 from datasets import load_from_disk
 from inference import OpenAIModel
 from util import build_prompt, truncate_generation, remove_markdown, fix_fragmented_code
@@ -132,6 +138,8 @@ print('task_id=' + row['task_id'] + ' chars=' + str(len(code)))
 print(code[:500] if code else '<empty>')
 """
     rust_snippet = """
+import pyarrow
+pyarrow.PyExtensionType = getattr(pyarrow, 'PyExtensionType', pyarrow.ExtensionType)
 from datasets import load_from_disk
 from inference import OpenAIModel
 from util import build_prompt, truncate_generation, remove_markdown, fix_fragmented_code
